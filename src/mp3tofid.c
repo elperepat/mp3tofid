@@ -919,6 +919,7 @@ dirscan(const char **dirs, unsigned int parentfidnumber, char *title)
 	FID		*fids = NULL;
 	int		nfids = 0;
 	int		includethis = 0;
+	char		*re;
 	char		*childpath;
 	const char	*childpaths[2];
 	unsigned int	fidnumber = 0;
@@ -962,6 +963,18 @@ dirscan(const char **dirs, unsigned int parentfidnumber, char *title)
 				continue;
 			if (strcmp(namelist[i]->d_name, "..") == 0)
 				continue;
+
+			if (strcmp(namelist[i]->d_name, ".ignoreaschild") == 0)
+			{
+			        re = (char *) emalloc(strlen(dirs[d]) + 1);
+			        strcpy(re,dirs[d]);
+			        strcat(re,"$");
+			        addre(re, RE_IGNORE_AS_CHILD);
+				continue;
+			}
+
+
+
 
 			/* build full pathname to directory entry */
 			childpath = (char *) emalloc(strlen(dirs[d]) + reclen(namelist[i]) + 2);
