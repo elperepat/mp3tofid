@@ -514,6 +514,38 @@ sourcefiletofidnumber(struct statex *se, unsigned int infidnumber)
 	return (fidnumber);
 }
 
+
+/* verify if source file has a fid number */
+unsigned int
+checksourcefilefidnumber(struct statex *se)
+{
+	datum		key;
+	datum		content;
+	char		inostring[64];
+	unsigned int	fidnumber = 0;
+
+	if (se->dev == mp3stdev)
+		sprintf(inostring, "%lu", se->ino);
+	else
+		sprintf(inostring, "%d,%d,%lu",
+			major(se->dev), minor(se->dev), se->ino);
+	key.dptr = inostring;
+	key.dsize = strlen(inostring) + 1;
+
+	content = gdbm_fetch(dbf, key);
+
+	if (content.dptr)
+	{
+		fidnumber = atoi(content.dptr);
+		if (progopts.showinodedb)
+			printf("fetched inode = %s, fidnumber = %x\n",
+				inostring, fidnumber);
+	}
+
+
+	return (fidnumber);
+}
+
 void
 releasefid(unsigned int fidnumber)
 {
@@ -1003,9 +1035,27 @@ dirscan(const char **dirs, unsigned int parentfidnumber, char *title)
 					{
 						if (includethis)
 						{
-							addfid = checklink(childpath);
-							if (addfid)
+							
+							if (S_ISDIR(statbuf.st_mode) && checklink(childpath) && !checksourcefilefidnumber(se[i]))
+							{
 								fidnumber = sourcefiletofidnumber(se[i], 0);
+								childpaths[0] = childpath;
+								childpaths[1] = NULL;
+								if (dirscan(childpaths, fidnumber,
+										stripdirfrompath(childpath)))
+									addfid++;
+								else
+									releasefid(fidnumber);
+							}
+							else
+							{
+								addfid = checklink(childpath);
+								if (addfid)
+									fidnumber = sourcefiletofidnumber(se[i], 0);	
+							}
+							
+			
+							
 						}
 						else if (progopts.showexclusions)
 							printf("excluding link %s\n", childpath);
@@ -1016,14 +1066,23 @@ dirscan(const char **dirs, unsigned int parentfidnumber, char *title)
 				{
 					if (includethis)
 					{
-						fidnumber = sourcefiletofidnumber(se[i], 0);
-						childpaths[0] = childpath;
-						childpaths[1] = NULL;
-						if (dirscan(childpaths, fidnumber,
-								stripdirfrompath(childpath)))
-							addfid++;
+						/* maybe it has already been added (and scanned) from a previous link */
+						if (!checksourcefilefidnumber(se[i]))
+						{
+							fidnumber = sourcefiletofidnumber(se[i], 0);
+							childpaths[0] = childpath;
+							childpaths[1] = NULL;
+							if (dirscan(childpaths, fidnumber,
+									stripdirfrompath(childpath)))
+								addfid++;
+							else
+								releasefid(fidnumber);
+						}
 						else
-							releasefid(fidnumber);
+						{
+							fidnumber = sourcefiletofidnumber(se[i], 0);
+							addfid++;
+						}
 					}
 					else if (progopts.showexclusions)
 						printf("excluding directory %s\n", childpath);
